@@ -50,7 +50,7 @@ int OTD_BasePosY=200;
 
 ARGBCOLOR OTD_LabelColor;
 
-struct tagRangeColor
+struct RangeColor
 {
 	int range;
 	bool bColorMorph; // Morph from last color to this color
@@ -58,13 +58,13 @@ struct tagRangeColor
 };
 
 // Yes, I know it's lazy to not dynamically allocate this memory.
-struct tagRangeColor OTD_RangeColorList[MAX_RANGE_COLORS];
+RangeColor OTD_RangeColorList[MAX_RANGE_COLORS];
 int OTD_iRangeColorsUsed;
 
 // Default colors as would be loaded in ini.
 // Format: RGB color in hex, distance, colorMorph on or off
 // color morph controls whether color is morped to this color from last
-char *OTD_ppszDefaultRangeColors[] =
+const char* OTD_ppszDefaultRangeColors[] =
 {
 	// RGB
 	"FF1919 10 0", // 255, 25, 25  - mostly red
@@ -85,7 +85,7 @@ unsigned char charHexValue(char ch)
 	return 0xFF;
 }
 
-bool parseHexColor(char *szHexColor, BYTE *colorHolder)
+bool parseHexColor(const char* szHexColor, BYTE *colorHolder)
 {
 	if (szHexColor)
 	{
@@ -101,7 +101,7 @@ bool parseHexColor(char *szHexColor, BYTE *colorHolder)
 	return false;
 }
 
-bool parseColor(char *szHexColor, ARGBCOLOR *pColor)
+bool parseColor(const char* szHexColor, ARGBCOLOR* pColor)
 {
 	// return false if cannot parse.
 	pColor->A = 0xFF;
@@ -111,7 +111,7 @@ bool parseColor(char *szHexColor, ARGBCOLOR *pColor)
 }
 
 // FIXME:  This is overly complicated for what it does and the logic doesn't look right.
-char *pastNextCh(char *szStr, char ch)
+const char* pastNextCh(const char *szStr, char ch)
 {
 	if (szStr == nullptr) return nullptr;
 
@@ -128,9 +128,9 @@ char *pastNextCh(char *szStr, char ch)
 	return (*szStr) ? szStr : nullptr;
 }
 
-bool OTD_parseRangeColor(char *szRangeColorInfo, struct tagRangeColor *prc)
+bool OTD_parseRangeColor(const char* szRangeColorInfo, RangeColor* prc)
 {
-	char *pszOffset;
+	const char *pszOffset;
 	if (prc == nullptr) return false;
 
 	memset(prc, 0, sizeof(*prc));
@@ -151,7 +151,7 @@ bool OTD_parseRangeColor(char *szRangeColorInfo, struct tagRangeColor *prc)
 VOID dumpColors()
 {
 	char szTemp[255];
-	struct tagRangeColor *prc;
+	struct RangeColor *prc;
 
 	sprintf_s(szTemp, "OTD - Color Dump: %d colors loaded", OTD_iRangeColorsUsed);
 	WriteChatColor(szTemp);
@@ -296,23 +296,16 @@ void OTD_loadIni(PSPAWNINFO pChar)
 	}
 }
 
-bool OTD_calcCurrentDegrees(FLOAT *pFloat)
+bool OTD_calcCurrentDegrees(float *pFloat)
 {
 	if (pFloat == nullptr) return false;
 
-	FLOAT degrees = 0.0f;
-	PSPAWNINFO psTarget = nullptr;
-
-	if (pTarget)
-	{
-		psTarget = (PSPAWNINFO)pTarget;
-	}
-
-	if (psTarget == nullptr || pCharSpawn == nullptr) return false;
+	float degrees = 0.0f;
+	if (pTarget == nullptr || pLocalPlayer == nullptr) return false;
 
 	// FIXME:  This looks like an overflow.
-	FLOAT headingTo=(FLOAT)(atan2f(((PSPAWNINFO)pCharSpawn)->Y - psTarget->Y, psTarget->X - ((PSPAWNINFO)pCharSpawn)->X) * 180.0f / PI + 90.0f);
-	FLOAT myHeading=((PSPAWNINFO)pCharSpawn)->Heading*0.703125f;
+	float headingTo = (float)(atan2f(pLocalPlayer->Y - pTarget->Y, pTarget->X - pLocalPlayer->X) * 180.0f / PI + 90.0f);
+	float myHeading = pLocalPlayer->Heading * 0.703125f;
 
 	degrees = myHeading - headingTo;
 
@@ -370,8 +363,8 @@ BYTE OTD_calcMorphColor(BYTE thisColor, BYTE lastColor, FLOAT pctChange, int i)
 void OTD_morphRangeColor(int iIndex, ARGBCOLOR *color, int distance)
 {
 	// These pointers are just for readability.
-	struct tagRangeColor *prcThis = &OTD_RangeColorList[iIndex];
-	struct tagRangeColor *prcLast = &OTD_RangeColorList[iIndex-1];
+	struct RangeColor *prcThis = &OTD_RangeColorList[iIndex];
+	struct RangeColor *prcLast = &OTD_RangeColorList[iIndex-1];
 	float numerator = (float)(distance - prcLast->range);
 	float divisor = (float)(prcThis->range - prcLast->range);
 	float pctChange;
@@ -481,7 +474,7 @@ void OTD_render()
 
 	if (OTD_calcCurrentDegrees(&fDegrees))
 	{
-		FLOAT fDistance = GetDistance((PSPAWNINFO)pCharSpawn, (PSPAWNINFO)pTarget);
+		FLOAT fDistance = GetDistance(pLocalPlayer, pTarget);
 		if (OTD_bRangeIsOn)
 		{
 			sprintf_s(szTemp, "%d ft", (int)fDistance);
@@ -652,7 +645,7 @@ PLUGIN_API void InitializePlugin()
 
 	OTD_loadDefaultColors();
 
-	OTD_loadIni((PSPAWNINFO)pCharSpawn);
+	OTD_loadIni(pLocalPlayer);
 	bChangedCharacter = false;
 }
 
@@ -666,16 +659,16 @@ PLUGIN_API void ShutdownPlugin()
 // Called every frame that the "HUD" is drawn -- e.g. net status / packet loss bar
 PLUGIN_API void OnDrawHUD()
 {
-	if (bChangedCharacter && gGameState==GAMESTATE_INGAME && pCharSpawn)
+	if (bChangedCharacter && gGameState == GAMESTATE_INGAME && pLocalPlayer)
 	{
-		OTD_loadIni((PSPAWNINFO)pCharSpawn);
+		OTD_loadIni(pLocalPlayer);
 		bChangedCharacter = false;
 	}
 
-	if (gGameState==GAMESTATE_INGAME &&
-			pTarget && pCharSpawn &&
-			OTD_bIsOn && pTarget->Name != pCharSpawn->Name &&
-			bChangedCharacter == false)
+	if (gGameState == GAMESTATE_INGAME
+		&& pTarget && pLocalPlayer 
+		&& OTD_bIsOn && !ci_equals(pTarget->Name, pLocalPlayer->Name)
+		&& bChangedCharacter == false)
 	{
 		OTD_render();
 	}
